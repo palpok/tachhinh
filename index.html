@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tách khung hình từ GIF và video</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--tx:#1d1d1b;--mut:#6b6b66;--bd:#dcdcd6;--ac:#2f6fed;--act:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--card:#222221;--tx:#ececE8;--mut:#9a9a94;--bd:#3a3a37;--ac:#6b9bff;--act:#101010}}
+:root[data-theme="dark"]{--bg:#161615;--card:#222221;--tx:#ececE8;--mut:#9a9a94;--bd:#3a3a37;--ac:#6b9bff;--act:#101010}
+html{color-scheme:light dark;scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.4rem;margin:0 0 4px}
+p.sub{color:var(--mut);margin:0 0 18px;font-size:.92rem}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:16px}
+#drop{border:2px dashed var(--bd);border-radius:12px;padding:28px 12px;text-align:center;cursor:pointer;color:var(--mut)}
+#drop.over{border-color:var(--ac);color:var(--ac)}
+#drop b{color:var(--tx);display:block;margin-bottom:4px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+label{display:flex;flex-direction:column;font-size:.85rem;color:var(--mut);gap:4px}
+input[type=number],select{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;width:130px}
+button{font:inherit;border:0;border-radius:8px;padding:10px 16px;background:var(--ac);color:var(--act);cursor:pointer;font-weight:600}
+button.sec{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+button:disabled{opacity:.5;cursor:default}
+#prev{max-width:100%;max-height:240px;border-radius:8px;display:block;margin-bottom:12px;background:#000}
+#info{font-size:.85rem;color:var(--mut);margin-bottom:10px}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.fr{position:relative;border:2px solid var(--bd);border-radius:8px;overflow:hidden;background:repeating-conic-gradient(#8883 0 25%,transparent 0 50%) 0 0/14px 14px}
+.fr.on{border-color:var(--ac)}
+.fr img{width:100%;display:block;aspect-ratio:1;object-fit:contain;cursor:pointer}
+.fr input{position:absolute;top:6px;left:6px;width:18px;height:18px}
+.fr a{display:block;text-align:center;font-size:.75rem;padding:5px;background:var(--card);color:var(--ac);text-decoration:none}
+.hide{display:none!important}
+#bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin-top:10px}
+#bar i{display:block;height:100%;width:0;background:var(--ac);transition:width .1s}
+</style>
+</head>
+<body>
+<main>
+<h1>Tách khung hình</h1>
+<p class="sub">Trích từng khung từ GIF hoặc video, xử lý ngay trên máy bạn, không tải file lên đâu cả.</p>
+
+<div class="card">
+  <div id="drop"><b>Chọn hoặc kéo thả file vào đây</b>GIF, MP4, WebM, MOV…</div>
+  <input id="file" type="file" accept="image/gif,video/*" class="hide">
+</div>
+
+<div id="opts" class="card hide">
+  <video id="vid" class="hide" controls playsinline muted style="max-width:100%;max-height:240px;border-radius:8px;margin-bottom:12px"></video>
+  <img id="prev" class="hide" alt="Xem trước">
+  <div id="info"></div>
+  <div class="row">
+    <span id="vOpts" class="hide" style="display:contents">
+      <label>Chế độ<select id="mode"><option value="raw">Raw (mọi khung)</option><option value="fps">Số khung/giây</option></select></label>
+      <label id="fpsL" class="hide">Khung/giây<input id="fps" type="number" min="0.1" step="0.5" value="10"></label>
+      <label>Từ (giây)<input id="t0" type="number" min="0" step="0.1" value="0"></label>
+      <label>Đến (giây)<input id="t1" type="number" min="0" step="0.1" value="0"></label>
+    </span>
+    <label>Định dạng<select id="fmt"><option value="png">PNG</option><option value="jpeg">JPG</option></select></label>
+    <button id="go">Tách khung</button>
+  </div>
+  <div id="bar" class="hide"><i></i></div>
+</div>
+
+<div id="res" class="card hide">
+  <div class="row" style="margin-bottom:12px;align-items:center">
+    <span id="count" style="flex:1"></span>
+    <button class="sec" id="all">Chọn / bỏ tất cả</button>
+    <button id="zip">Tải ZIP</button>
+  </div>
+  <div id="grid"></div>
+</div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/dist/gifuct-js.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const MAX = 500;
+let file = null, kind = null, frames = [], busy = false;
+
+const drop = $('#drop'), fileIn = $('#file');
+drop.onclick = () => fileIn.click();
+fileIn.onchange = () => fileIn.files[0] && load(fileIn.files[0]);
+['dragover','dragenter'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', ev => ev.dataTransfer.files[0] && load(ev.dataTransfer.files[0]));
+
+async function load(f) {
+  file = f; clearFrames();
+  const isGif = f.type === 'image/gif' || /\.gif$/i.test(f.name);
+  kind = isGif ? 'gif' : 'video';
+  $('#opts').classList.remove('hide');
+  const vid = $('#vid'), img = $('#prev');
+  const url = URL.createObjectURL(f);
+  vid.classList.toggle('hide', isGif); img.classList.toggle('hide', !isGif);
+  $('#vOpts').classList.toggle('hide', isGif);
+  if (isGif) { img.src = url; $('#info').textContent = f.name; }
+  else {
+    vid.src = url;
+    await new Promise(r => { vid.onloadeddata = r; vid.onerror = r; });
+    $('#info').textContent = `${f.name} · ${vid.videoWidth}×${vid.videoHeight} · ${vid.duration.toFixed(1)} giây`;
+    $('#t0').value = 0; $('#t1').value = +vid.duration.toFixed(2);
+  }
+}
+
+function clearFrames() {
+  frames.forEach(x => URL.revokeObjectURL(x.url));
+  frames = []; $('#grid').innerHTML = ''; $('#res').classList.add('hide');
+}
+
+const toBlob = (c, t) => new Promise(r => c.toBlob(r, 'image/' + t, 0.92));
+
+async function snap(src, w, h, t) {
+  const o = document.createElement('canvas'); o.width = w; o.height = h;
+  const x = o.getContext('2d');
+  if (t === 'jpeg') { x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); }
+  x.drawImage(src, 0, 0);
+  return toBlob(o, t);
+}
+
+function addFrame(blob, t) {
+  const n = frames.length + 1;
+  frames.push({ blob, url: URL.createObjectURL(blob), name: `frame_${String(n).padStart(3, '0')}.${t === 'jpeg' ? 'jpg' : 'png'}`, on: true });
+}
+
+function progress(p) { $('#bar i').style.width = (p * 100) + '%'; }
+
+$('#mode').onchange = () => $('#fpsL').classList.toggle('hide', $('#mode').value !== 'fps');
+$('#go').onclick = async () => {
+  if (busy || !file) return;
+  busy = true; $('#go').disabled = true; clearFrames();
+  $('#bar').classList.remove('hide'); progress(0);
+  const t = $('#fmt').value;
+  try { kind === 'gif' ? await doGif(t) : await doVideo(t); }
+  catch (e) { alert('Không xử lý được file này: ' + e.message); }
+  busy = false; $('#go').disabled = false; $('#bar').classList.add('hide');
+  render();
+};
+
+async function doVideo(t) {
+  const v = $('#vid');
+  if (!v.requestVideoFrameCallback) throw new Error('trình duyệt chưa hỗ trợ tách từng khung, hãy thử Chrome, Edge, Safari hoặc Firefox bản mới');
+  v.pause(); v.muted = true;
+  const t0 = Math.max(0, +$('#t0').value || 0), t1 = Math.min(v.duration, +$('#t1').value || v.duration);
+  if (t1 <= t0) throw new Error('khoảng thời gian không hợp lệ');
+  const seek = tm => Math.abs(v.currentTime - tm) < 0.001 ? 0 : new Promise(r => { v.addEventListener('seeked', r, { once: true }); v.currentTime = tm; });
+  const w = v.videoWidth, h = v.videoHeight, jobs = [];
+  if ($('#mode').value === 'fps') {
+    const fps = Math.max(0.1, +$('#fps').value || 1);
+    const total = Math.min(MAX, Math.floor((t1 - t0) * fps) + 1);
+    for (let i = 0; i < total; i++) {
+      await seek(Math.min(t0 + i / fps, Math.max(0, v.duration - 0.01)));
+      addFrame(await snap(v, w, h, t), t);
+      progress((i + 1) / total);
+    }
+    return;
+  }
+  await seek(t0);
+  let last = -1;
+  await new Promise(res => {
+    const cb = (now, meta) => {
+      if (meta.mediaTime > t1 + 0.0005) { res(); return; }
+      if (meta.mediaTime !== last && jobs.length < MAX) {
+        last = meta.mediaTime;
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        if (t === 'jpeg') { x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); }
+        x.drawImage(v, 0, 0);
+        jobs.push(toBlob(c, t));
+      }
+      progress((v.currentTime - t0) / (t1 - t0));
+      if (v.ended || jobs.length >= MAX) res(); else v.requestVideoFrameCallback(cb);
+    };
+    v.onended = res;
+    v.playbackRate = 0.25;
+    v.requestVideoFrameCallback(cb);
+    v.play();
+  });
+  v.pause(); v.onended = null; v.playbackRate = 1;
+  (await Promise.all(jobs)).forEach(b => addFrame(b, t));
+}
+
+async function doGif(t) {
+  const g = gifuct.parseGIF(await file.arrayBuffer());
+  const list = gifuct.decompressFrames(g, true);
+  const w = g.lsd.width, h = g.lsd.height, step = 1;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  const tc = document.createElement('canvas'), tx = tc.getContext('2d');
+  let kept = 0;
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i], d = f.dims;
+    const backup = f.disposalType === 3 ? x.getImageData(0, 0, w, h) : null;
+    tc.width = d.width; tc.height = d.height;
+    tx.putImageData(new ImageData(f.patch, d.width, d.height), 0, 0);
+    x.drawImage(tc, d.left, d.top);
+    if (i % step === 0 && kept < MAX) { addFrame(await snap(c, w, h, t), t); kept++; }
+    if (f.disposalType === 2) x.clearRect(d.left, d.top, d.width, d.height);
+    else if (backup) x.putImageData(backup, 0, 0);
+    progress((i + 1) / list.length);
+  }
+}
+
+function render() {
+  const grid = $('#grid'); grid.innerHTML = '';
+  frames.forEach((f, i) => {
+    const d = document.createElement('div'); d.className = 'fr' + (f.on ? ' on' : '');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = f.on;
+    const im = document.createElement('img'); im.src = f.url; im.alt = f.name;
+    const a = document.createElement('a'); a.href = f.url; a.download = f.name; a.textContent = 'Tải ' + f.name;
+    const tog = () => { f.on = !f.on; cb.checked = f.on; d.classList.toggle('on', f.on); count(); };
+    cb.onchange = () => { f.on = cb.checked; d.classList.toggle('on', f.on); count(); };
+    im.onclick = tog;
+    d.append(cb, im, a); grid.append(d);
+  });
+  $('#res').classList.toggle('hide', !frames.length);
+  count();
+}
+
+function count() {
+  const n = frames.filter(f => f.on).length;
+  $('#count').textContent = `${frames.length} khung · đã chọn ${n}`;
+  $('#zip').disabled = !n;
+}
+
+$('#all').onclick = () => {
+  const on = !frames.every(f => f.on);
+  frames.forEach(f => f.on = on); render();
+};
+
+$('#zip').onclick = async () => {
+  const z = new JSZip();
+  frames.filter(f => f.on).forEach(f => z.file(f.name, f.blob));
+  const b = await z.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = 'frames.zip'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+</script>
+</body>
+</html>
